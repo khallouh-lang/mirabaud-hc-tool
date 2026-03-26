@@ -3,64 +3,109 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mirabaud High Conviction Dashboard</title>
+    <title>Mirabaud High Conviction - AI Dashboard</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-50">
+<body class="bg-slate-100">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useMemo } = React;
+        const { useState, useMemo, useEffect } = React;
 
-        // -- YOUR DATA --
-        const DEFAULT_HC = [
-            { name:"Deutsche Telekom AG", sector:"Communication Services", upside:15.8, growth:12.8, fwdPE:13.2, risk:"low" },
-            { name:"Alphabet Inc", sector:"Communication Services", upside:17.6, growth:14.8, fwdPE:21.7, risk:"low" },
-            { name:"Microsoft Corp", sector:"Information Technology", upside:56.9, growth:12.5, fwdPE:20.1, risk:"high" },
-            { name:"NVIDIA Corp", sector:"Information Technology", upside:39.0, growth:33.1, fwdPE:15.5, risk:"medium" }
+        // Your specific Sector Colors
+        const SECTOR_COLORS = {  
+            "Communication Services":"#4A90D9","Consumer Discretionary":"#E88C3C",  
+            "Consumer Staples":"#6DBE6D","Energy":"#D4A017","Financials":"#7B68EE",  
+            "Health Care":"#E05A5A","Industrials":"#4DBBBB","Information Technology":"#3E7ACC",  
+            "Materials":"#9B7EC8","Utilities":"#64A86E"
+        };
+
+        // Simplified Data for Visualization (Replace with your CSV logic later)
+        const SAMPLE_DATA = [
+            { name: "Deutsche Telekom AG", sector: "Communication Services", upside: 0.158, growth: 0.128, risk: "low", region: "EU" },
+            { name: "Alphabet Inc", sector: "Communication Services", upside: 0.176, growth: 0.148, risk: "low", region: "US" },
+            { name: "Microsoft Corp", sector: "Information Technology", upside: 0.569, growth: 0.125, risk: "high", region: "US" },
+            { name: "NVIDIA Corp", sector: "Information Technology", upside: 0.390, growth: 0.331, risk: "medium", region: "US" }
         ];
 
         function App() {
-            const [searchTerm, setSearchTerm] = useState("");
+            const [filterSector, setFilterSector] = useState("All");
 
-            const filtered = DEFAULT_HC.filter(s => 
-                s.name.toLowerCase().includes(searchTerm.toLowerCase())
-            );
+            const filtered = useMemo(() => 
+                filterSector === "All" ? SAMPLE_DATA : SAMPLE_DATA.filter(s => s.sector === filterSector)
+            , [filterSector]);
 
             return (
-                <div className="p-8 font-sans">
-                    <div className="flex justify-between items-center bg-[#0f2d5e] p-6 rounded-lg text-white mb-8 shadow-lg">
-                        <h1 className="text-xl font-bold tracking-widest">MIRABAUD | <span className="font-light">HC TOOL</span></h1>
-                        <button className="bg-orange-600 hover:bg-orange-700 px-4 py-2 rounded font-bold text-sm transition-all">
-                           ⎙ EXPORT PDF
-                        </button>
+                <div className="p-4 md:p-8 font-sans max-w-7xl mx-auto">
+                    {/* Header */}
+                    <header className="flex justify-between items-center bg-[#0f2d5e] p-6 rounded-xl text-white mb-8 shadow-2xl">
+                        <div>
+                            <h1 className="text-2xl font-bold tracking-tighter italic">MIRABAUD</h1>
+                            <p className="text-[10px] text-blue-200 uppercase tracking-widest">Equity Investment Services</p>
+                        </div>
+                        <div className="text-right">
+                            <button className="bg-orange-600 hover:bg-orange-700 px-6 py-2 rounded-full font-bold text-sm transition-all shadow-lg">
+                               ⎙ GENERATE PDF REPORT
+                            </button>
+                        </div>
+                    </header>
+
+                    {/* Quick Stats Dashboard */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                        <div className="bg-white p-4 rounded-lg shadow-sm border-b-4 border-blue-500 text-center">
+                            <p className="text-xs text-slate-500 uppercase">Review Required</p>
+                            <p className="text-2xl font-black text-red-600">{SAMPLE_DATA.filter(s=>s.risk==='high').length}</p>
+                        </div>
+                        <div className="bg-white p-4 rounded-lg shadow-sm border-b-4 border-orange-500 text-center">
+                            <p className="text-xs text-slate-500 uppercase">On Watch</p>
+                            <p className="text-2xl font-black text-orange-500">{SAMPLE_DATA.filter(s=>s.risk==='medium').length}</p>
+                        </div>
                     </div>
 
-                    <div className="mb-6">
-                        <input 
-                            type="text" 
-                            placeholder="Search stocks..." 
-                            className="p-3 border rounded-lg w-64 shadow-sm focus:ring-2 focus:ring-blue-900 outline-none"
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
+                    {/* Filter Bar */}
+                    <div className="bg-white p-4 rounded-lg mb-8 shadow-sm flex gap-4 overflow-x-auto">
+                        <button onClick={() => setFilterSector("All")} className={`px-4 py-1 rounded-full text-xs font-bold transition ${filterSector === 'All' ? 'bg-blue-900 text-white' : 'bg-slate-100 text-slate-600'}`}>All</button>
+                        {Object.keys(SECTOR_COLORS).map(s => (
+                            <button 
+                                key={s} 
+                                onClick={() => setFilterSector(s)}
+                                className={`whitespace-nowrap px-4 py-1 rounded-full text-xs font-bold transition ${filterSector === s ? 'bg-blue-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+                            >
+                                {s}
+                            </button>
+                        ))}
                     </div>
 
+                    {/* Stock Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {filtered.map(s => (
-                            <div key={s.name} className="bg-white p-6 rounded-xl shadow-sm border-t-4 border-blue-500 hover:shadow-md transition-shadow">
-                                <h3 className="text-lg font-bold text-slate-800">{s.name}</h3>
-                                <p className="text-xs text-slate-500 mb-4">{s.sector}</p>
-                                <div className="grid grid-cols-2 gap-4 text-sm border-t pt-4">
-                                    <div>Upside: <span className="font-bold text-green-600">{s.upside}%</span></div>
-                                    <div>P/E: <span className="font-bold">{s.fwdPE}x</span></div>
-                                </div>
-                                <div className={`mt-4 text-[10px] font-bold px-2 py-1 rounded inline-block ${
-                                    s.risk === 'high' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-                                }`}>
-                                    STATUS: {s.risk.toUpperCase()}
+                            <div key={s.name} className="bg-white rounded-xl shadow-sm hover:shadow-xl transition-all border border-slate-200 overflow-hidden">
+                                <div className="h-2" style={{ backgroundColor: SECTOR_COLORS[s.sector] || '#ccc' }}></div>
+                                <div className="p-5">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <h3 className="font-bold text-slate-800 leading-tight">{s.name}</h3>
+                                        <span className={`text-[9px] px-2 py-0.5 rounded font-bold ${s.risk === 'high' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                                            {s.risk.toUpperCase()}
+                                        </span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 mb-4">{s.sector} | {s.region}</p>
+                                    
+                                    <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded-lg">
+                                        <div>
+                                            <p className="text-[9px] text-slate-400 uppercase">Upside</p>
+                                            <p className={`text-sm font-bold ${s.upside > 0.2 ? 'text-green-600' : 'text-slate-700'}`}>+{(s.upside*100).toFixed(1)}%</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[9px] text-slate-400 uppercase">EPS Growth</p>
+                                            <p className="text-sm font-bold text-slate-700">{(s.growth*100).toFixed(1)}%</p>
+                                        </div>
+                                    </div>
+                                    <button className="w-full mt-4 border border-blue-900 text-blue-900 text-[10px] font-bold py-2 rounded-md hover:bg-blue-50 transition">
+                                        RUN CLAUDE-4 SONNET ANALYSIS
+                                    </button>
                                 </div>
                             </div>
                         ))}
