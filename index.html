@@ -2,121 +2,102 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Mirabaud HC | Triple Data Fusion</title>
+    <title>Mirabaud HC | Data Diagnostic Tool</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-[#f0f2f5]">
+<body class="bg-slate-900 text-slate-100 min-h-screen">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
-
-        // Helper to clean names for better matching (from your original code)
-        function normName(n) {
-            if (!n) return "";
-            return String(n).toLowerCase()
-                .replace(/(-reg|-pref|-cl [a-z]|-class [a-z]|-adr|-br|-genusschein|-part cert|-nv|-plc|-ag|-se|-sa|-inc|-corp|-co|-ltd|-llc|-lp|-group|-holding)(\s|$)/gi," ")
-                .replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
-        }
+        const { useState, useEffect } = React;
 
         function App() {
             const [files, setFiles] = useState({ stocks: null, quant: null, qual: null });
+            const [logs, setLogs] = useState(["System Ready. Waiting for 3 CSV files..."]);
             const [merged, setMerged] = useState([]);
+
+            const addLog = (msg) => setLogs(prev => [msg, ...prev].slice(0, 5));
 
             const handleFile = (type, e) => {
                 const file = e.target.files[0];
+                if (!file) return;
+
+                addLog(`Reading ${file.name}...`);
+                
                 const reader = new FileReader();
                 reader.onload = (f) => {
-                    const text = f.target.result;
-                    const lines = text.split(/\r?\n/).filter(l => l.trim());
-                    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-                    const data = lines.slice(1).map(line => {
-                        const cols = line.split(',');
-                        return headers.reduce((acc, h, i) => {
-                            acc[h] = cols[i]?.trim();
-                            return acc;
-                        }, {});
-                    });
-                    setFiles(prev => ({ ...prev, [type]: data }));
+                    try {
+                        const text = f.target.result;
+                        // Handle both comma (,) and semicolon (;) separators common in European Excel
+                        const lines = text.split(/\r?\n/).filter(l => l.trim());
+                        if (lines.length < 2) throw new Error("File appears empty.");
+
+                        const separator = lines[0].includes(';') ? ';' : ',';
+                        const headers = lines[0].split(separator).map(h => h.trim().toLowerCase());
+                        
+                        const data = lines.slice(1).map(line => {
+                            const cols = line.split(separator);
+                            return headers.reduce((acc, h, i) => {
+                                acc[h] = cols[i]?.trim();
+                                return acc;
+                            }, {});
+                        });
+
+                        setFiles(prev => ({ ...prev, [type]: data }));
+                        addLog(`✅ Successfully loaded ${data.length} rows for ${type}.`);
+                    } catch (err) {
+                        addLog(`❌ Error: ${err.message}`);
+                    }
                 };
+                reader.onerror = () => addLog("❌ Failed to read file.");
                 reader.readAsText(file);
             };
 
-            // The Fusion Engine
-            useEffect(() => {
-                if (files.stocks && files.quant && files.qual) {
-                    const result = files.stocks.map(s => {
-                        const sName = normName(s.name || s.company || s.ticker);
-                        const qMatch = files.quant.find(q => normName(q.name || q.ticker) === sName) || {};
-                        const lMatch = files.qual.find(l => normName(l.name || l.ticker) === sName) || {};
-                        return { ...s, quant: qMatch, qual: lMatch };
-                    });
-                    setMerged(result);
-                }
-            }, [files]);
-
             return (
-                <div className="max-w-6xl mx-auto p-6 font-sans">
-                    <div className="bg-[#0f2d5e] text-white p-8 rounded-t-2xl shadow-lg border-b-4 border-orange-500">
-                        <h1 className="text-3xl font-black italic tracking-tighter">MIRABAUD <span className="font-light opacity-50">| HC FUSION</span></h1>
-                        <p className="text-xs text-blue-200 mt-2 uppercase tracking-widest font-bold">Consolidated Equity Research Dashboard</p>
+                <div className="max-w-5xl mx-auto p-10">
+                    <header className="mb-10 text-center">
+                        <h1 className="text-3xl font-black text-white tracking-widest uppercase">Mirabaud Fusion Engine</h1>
+                        <p className="text-slate-500 text-xs mt-2">v2026.03 | Internal Research Tool</p>
+                    </header>
+
+                    {/* Step 1: Upload Zones */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+                        <UploadCard id="stocks" label="1. Stock Universe" active={!!files.stocks} onUpload={handleFile} />
+                        <UploadCard id="quant" label="2. Quant Rankings" active={!!files.quant} onUpload={handleFile} />
+                        <UploadCard id="qual" label="3. Qual Rankings" active={!!files.qual} onUpload={handleFile} />
                     </div>
 
-                    {merged.length === 0 ? (
-                        <div className="bg-white p-10 rounded-b-2xl shadow-xl grid grid-cols-1 md:grid-cols-3 gap-8">
-                            <UploadBox label="1. STOCK LIST" type="stocks" active={!!files.stocks} onUpload={handleFile} />
-                            <UploadBox label="2. QUANT RANKING" type="quant" active={!!files.quant} onUpload={handleFile} />
-                            <UploadBox label="3. QUAL RANKING" type="qual" active={!!files.qual} onUpload={handleFile} />
-                        </div>
-                    ) : (
-                        <div className="bg-white rounded-b-2xl shadow-xl overflow-hidden animate-in fade-in duration-500">
-                            <div className="p-4 bg-slate-50 border-b flex justify-between items-center text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                                <span>Showing {merged.length} Consolidated Entities</span>
-                                <button onClick={() => window.location.reload()} className="text-orange-600 hover:text-orange-800">Clear All Data</button>
-                            </div>
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="text-[11px] bg-slate-100 text-slate-600 uppercase">
-                                        <th className="p-4 border-b">Security</th>
-                                        <th className="p-4 border-b">Quant Q</th>
-                                        <th className="p-4 border-b">Qual Rating</th>
-                                        <th className="p-4 border-b">Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {merged.map((s, i) => (
-                                        <tr key={i} className="hover:bg-blue-50/50 transition border-b last:border-0 text-sm">
-                                            <td className="p-4 font-bold text-slate-800">{s.name || s.ticker}</td>
-                                            <td className="p-4 font-mono">{s.quant?.quartile || '—'}</td>
-                                            <td className="p-4 italic text-slate-600">{s.qual?.rating || 'Pending'}</td>
-                                            <td className="p-4">
-                                                <span className={`px-2 py-1 rounded text-[10px] font-black ${s.qual?.rating === 'Buy' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                                                    {s.qual?.rating === 'Buy' ? 'CONVICTION' : 'WATCH'}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                    {/* Step 2: Diagnostic Logs */}
+                    <div className="bg-black/40 border border-slate-700 p-4 rounded-lg mb-6 font-mono text-[10px] text-blue-400">
+                        <p className="text-slate-500 mb-2 uppercase border-b border-slate-800 pb-1">Diagnostic Console</p>
+                        {logs.map((log, i) => <div key={i} className="py-0.5 tracking-tighter">{log}</div>)}
+                    </div>
+
+                    {/* Step 3: Result View */}
+                    {files.stocks && files.quant && files.qual && (
+                        <div className="bg-white text-slate-900 p-6 rounded-xl shadow-2xl animate-bounce-short">
+                            <h2 className="font-bold mb-4 text-center">Files Ready for Fusion!</h2>
+                            <button className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700">
+                                PROCESS & MERGE DATA
+                            </button>
                         </div>
                     )}
                 </div>
             );
         }
 
-        const UploadBox = ({ label, type, active, onUpload }) => (
-            <div className={`relative p-8 border-2 rounded-xl text-center transition-all ${active ? 'bg-green-50 border-green-500' : 'bg-slate-50 border-dashed border-slate-300 hover:border-blue-500'}`}>
-                <div className="text-4xl mb-4">{active ? '✅' : '📥'}</div>
-                <h4 className="text-xs font-black text-slate-700 mb-4 tracking-tighter uppercase leading-none">{label}</h4>
+        const UploadCard = ({ id, label, active, onUpload }) => (
+            <div className={`p-6 border-2 rounded-2xl transition-all ${active ? 'bg-green-500/20 border-green-500 text-green-400' : 'bg-slate-800 border-slate-700 border-dashed text-slate-400'}`}>
+                <p className="text-[10px] font-bold mb-3 uppercase tracking-widest">{label}</p>
                 <input 
                     type="file" 
-                    onChange={(e) => onUpload(type, e)}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    onChange={(e) => onUpload(id, e)} 
+                    className="block w-full text-[10px] file:bg-blue-600 file:text-white file:border-0 file:rounded file:px-3 file:py-1 cursor-pointer"
                 />
-                {!active && <p className="text-[10px] text-slate-400">Click to Browse or Drag File</p>}
+                {active && <p className="mt-2 text-[10px] font-bold">READY</p>}
             </div>
         );
 
