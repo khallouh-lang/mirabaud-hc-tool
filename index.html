@@ -2,28 +2,22 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Mirabaud HC | Final Fusion</title>
+    <title>Mirabaud | ISIN Fusion Engine</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-100">
+<body class="bg-[#f8fafc]">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState } = React;
 
-        // Helper to normalize names (The "Matching Brain")
-        function norm(n) {
-            if (!n) return "";
-            return String(n).toLowerCase().replace(/[^a-z0-9]/g, "").trim();
-        }
-
         function App() {
             const [data, setData] = useState({ stocks: null, quant: null, qual: null });
-            const [final, setFinal] = useState(null);
-            const [error, setError] = useState("");
+            const [mergedData, setMergedData] = useState(null);
+            const [debug, setDebug] = useState("");
 
             const handleFile = (key, e) => {
                 const file = e.target.files[0];
@@ -34,6 +28,7 @@
                     const rows = text.split(/\r?\n/).filter(l => l.trim());
                     const sep = rows[0].includes(';') ? ';' : ',';
                     const headers = rows[0].split(sep).map(h => h.trim().toLowerCase());
+                    
                     const json = rows.slice(1).map(row => {
                         const cols = row.split(sep);
                         return headers.reduce((acc, h, i) => {
@@ -42,82 +37,92 @@
                         }, {});
                     });
                     setData(prev => ({ ...prev, [key]: json }));
+                    setDebug(prev => prev + `\nLoaded ${key}: ${json.length} rows.`);
                 };
                 reader.readAsText(file);
             };
 
-            const runMerge = () => {
+            const runFusion = () => {
                 try {
-                    // This logic looks for a column named 'name' or 'ticker' or 'company'
-                    const merged = data.stocks.map(s => {
-                        const id = norm(s.name || s.ticker || s.company);
-                        const q = data.quant.find(item => norm(item.name || item.ticker) === id) || {};
-                        const l = data.qual.find(item => norm(item.name || item.ticker) === id) || {};
-                        return { ...s, ...q, ...l };
+                    // KEY STEP: Matching all files by 'id_isin'
+                    const result = data.stocks.map(s => {
+                        const isin = String(s.id_isin || "").trim().toLowerCase();
+                        if (!isin) return { ...s, _match: "No ISIN" };
+
+                        const qMatch = data.quant.find(q => String(q.id_isin || "").trim().toLowerCase() === isin) || {};
+                        const lMatch = data.qual.find(l => String(l.id_isin || "").trim().toLowerCase() === isin) || {};
+                        
+                        return { ...s, ...qMatch, ...lMatch, _found: !!qMatch.id_isin && !!lMatch.id_isin };
                     });
-                    setFinal(merged);
-                    setError("");
+                    setMergedData(result);
                 } catch (err) {
-                    setError("Merge Failed: Check if your CSV headers include 'name' or 'ticker'.");
+                    setDebug("Error: Ensure all files have 'id_isin' header.");
                 }
             };
 
             return (
-                <div className="p-10 max-w-5xl mx-auto font-sans">
-                    <h1 className="text-2xl font-bold text-[#0f2d5e] mb-6 underline decoration-orange-500">MIRABAUD HC FUSION ENGINE</h1>
-                    
-                    {/* Step 1: Uploaders */}
-                    <div className="grid grid-cols-3 gap-4 mb-8">
-                        {['stocks', 'quant', 'qual'].map(k => (
-                            <div key={k} className={`p-4 border-2 rounded-lg ${data[k] ? 'bg-green-50 border-green-500' : 'bg-white border-dashed border-slate-300'}`}>
-                                <p className="text-[10px] font-bold uppercase mb-2 text-slate-400">{k} File</p>
-                                <input type="file" onChange={(e) => handleFile(k, e)} className="text-[10px] w-full cursor-pointer" />
-                                {data[k] && <p className="text-[10px] text-green-600 font-bold mt-1">✓ {data[k].length} rows</p>}
-                            </div>
-                        ))}
+                <div className="max-w-4xl mx-auto p-12 font-sans">
+                    <div className="bg-[#0f2d5e] p-8 rounded-2xl shadow-2xl text-white mb-8 border-b-8 border-orange-600">
+                        <h1 className="text-3xl font-black italic tracking-tighter">MIRABAUD <span className="font-light opacity-60">| ISIN FUSION</span></h1>
+                        <p className="text-[10px] uppercase tracking-[0.2em] mt-2 font-bold text-blue-300">High Conviction Multi-Source Integrator</p>
                     </div>
 
-                    {/* Step 2: The Merge Button */}
-                    {data.stocks && data.quant && data.qual && !final && (
-                        <button 
-                            onClick={runMerge}
-                            className="w-full bg-orange-600 text-white py-4 rounded-xl font-black text-lg shadow-lg hover:bg-orange-700 transition-all active:scale-95"
-                        >
-                            PROCESS & MERGE DATA NOW
-                        </button>
-                    )}
-
-                    {error && <p className="text-red-600 font-bold mt-4">⚠️ {error}</p>}
-
-                    {/* Step 3: Result Table */}
-                    {final && (
-                        <div className="mt-8 bg-white rounded-xl shadow-xl overflow-hidden animate-in slide-in-from-bottom-5 duration-700">
-                            <div className="bg-[#0f2d5e] text-white p-4 font-bold flex justify-between uppercase text-xs">
-                                <span>Consolidated Results</span>
-                                <span>{final.length} Securities</span>
+                    {!mergedData ? (
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-3 gap-4">
+                                <UploadBox label="STOCK UNIVERSE" onFile={(e) => handleFile('stocks', e)} done={!!data.stocks} />
+                                <UploadBox label="QUANT RANK" onFile={(e) => handleFile('quant', e)} done={!!data.quant} />
+                                <UploadBox label="QUAL RANK" onFile={(e) => handleFile('qual', e)} done={!!data.qual} />
                             </div>
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-slate-50 border-b">
+
+                            {data.stocks && data.quant && data.qual && (
+                                <button onClick={runFusion} className="w-full bg-orange-600 hover:bg-orange-700 text-white py-6 rounded-2xl font-black text-xl shadow-xl transition-all transform active:scale-95">
+                                    RUN FINAL MERGE
+                                </button>
+                            )}
+                            <pre className="text-[10px] text-slate-400 bg-white p-4 rounded border border-slate-200">{debug || "Waiting for files..."}</pre>
+                        </div>
+                    ) : (
+                        <div className="bg-white rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in duration-300">
+                            <div className="p-6 bg-slate-50 border-b flex justify-between items-center">
+                                <h2 className="font-bold text-[#0f2d5e]">CONSOLIDATED LIST ({mergedData.length} SECURITIES)</h2>
+                                <button onClick={() => window.location.reload()} className="text-xs font-bold text-red-500 hover:underline">RESET</button>
+                            </div>
+                            <table className="w-full text-sm">
+                                <thead className="bg-slate-100 text-[10px] font-black text-slate-500 border-b">
                                     <tr>
-                                        <th className="p-4">Stock Name</th>
-                                        <th className="p-4 text-center">Merged Data Check</th>
+                                        <th className="p-4 text-left">ISIN ID</th>
+                                        <th className="p-4 text-left">SECURITY NAME</th>
+                                        <th className="p-4 text-center">FUSION STATUS</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {final.slice(0, 10).map((row, i) => (
-                                        <tr key={i} className="border-b hover:bg-blue-50">
-                                            <td className="p-4 font-bold uppercase text-slate-700">{row.name || row.ticker}</td>
-                                            <td className="p-4 text-center text-xs text-slate-400 italic">Successfully linked across 3 files</td>
+                                    {mergedData.map((row, i) => (
+                                        <tr key={i} className="border-b last:border-0 hover:bg-blue-50/50">
+                                            <td className="p-4 font-mono text-blue-800 font-bold tracking-tighter uppercase">{row.id_isin}</td>
+                                            <td className="p-4 font-medium">{row.name || row.company || "Unknown"}</td>
+                                            <td className="p-4 text-center">
+                                                <span className={`px-3 py-1 rounded-full text-[9px] font-black ${row._found ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                    {row._found ? 'COMPLETE' : 'MISSING DATA'}
+                                                </span>
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
-                            {final.length > 10 && <p className="p-4 text-center text-xs text-slate-400 italic">Showing first 10 of {final.length} stocks...</p>}
                         </div>
                     )}
                 </div>
             );
         }
+
+        const UploadBox = ({ label, onFile, done }) => (
+            <div className={`p-6 border-2 rounded-xl text-center transition ${done ? 'bg-green-50 border-green-500' : 'bg-white border-dashed border-slate-300'}`}>
+                <div className="text-2xl mb-2">{done ? '✅' : '📄'}</div>
+                <p className="text-[10px] font-black text-slate-500 mb-4">{label}</p>
+                <input type="file" onChange={onFile} className="text-[9px] w-full" />
+            </div>
+        );
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
