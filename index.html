@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mirabaud High Conviction Dashboard</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo } = React;
+
+        // -- YOUR DATA --
+        const DEFAULT_HC = [
+            { name:"Deutsche Telekom AG", sector:"Communication Services", upside:15.8, growth:12.8, fwdPE:13.2, risk:"low" },
+            { name:"Alphabet Inc", sector:"Communication Services", upside:17.6, growth:14.8, fwdPE:21.7, risk:"low" },
+            { name:"Microsoft Corp", sector:"Information Technology", upside:56.9, growth:12.5, fwdPE:20.1, risk:"high" },
+            { name:"NVIDIA Corp", sector:"Information Technology", upside:39.0, growth:33.1, fwdPE:15.5, risk:"medium" }
+        ];
+
+        function App() {
+            const [searchTerm, setSearchTerm] = useState("");
+
+            const filtered = DEFAULT_HC.filter(s => 
+                s.name.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+
+            return (
+                <div className="p-8 font-sans">
+                    <div className="flex justify-between items-center bg-[#0f2d5e] p-6 rounded-lg text-white mb-8 shadow-lg">
+                        <h1 className="text-xl font-bold tracking-widest">MIRABAUD | <span className="font-light">HC TOOL</span></h1>
+                        <button className="bg-orange-600 hover:bg-orange-700 px-4 py-2 rounded font-bold text-sm transition-all">
+                           ⎙ EXPORT PDF
+                        </button>
+                    </div>
+
+                    <div className="mb-6">
+                        <input 
+                            type="text" 
+                            placeholder="Search stocks..." 
+                            className="p-3 border rounded-lg w-64 shadow-sm focus:ring-2 focus:ring-blue-900 outline-none"
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {filtered.map(s => (
+                            <div key={s.name} className="bg-white p-6 rounded-xl shadow-sm border-t-4 border-blue-500 hover:shadow-md transition-shadow">
+                                <h3 className="text-lg font-bold text-slate-800">{s.name}</h3>
+                                <p className="text-xs text-slate-500 mb-4">{s.sector}</p>
+                                <div className="grid grid-cols-2 gap-4 text-sm border-t pt-4">
+                                    <div>Upside: <span className="font-bold text-green-600">{s.upside}%</span></div>
+                                    <div>P/E: <span className="font-bold">{s.fwdPE}x</span></div>
+                                </div>
+                                <div className={`mt-4 text-[10px] font-bold px-2 py-1 rounded inline-block ${
+                                    s.risk === 'high' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                                }`}>
+                                    STATUS: {s.risk.toUpperCase()}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
