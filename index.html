@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Mirabaud HC | Executive Terminal</title>
+    <title>Mirabaud HC | Institutional Terminal</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-[#f4f7fa] text-slate-900 font-sans">
+<body class="bg-[#f8fafc] text-slate-900 font-sans">
     <div id="root"></div>
 
     <script type="text/babel">
@@ -33,6 +33,7 @@
             const [raw, setRaw] = useState({ hc: null, quant: null, qual: null });
             const [enriched, setEnriched] = useState([]);
             const [selected, setSelected] = useState(null);
+            const [activeSector, setActiveSector] = useState(null);
             const [view, setView] = useState("upload");
             const [search, setSearch] = useState("");
 
@@ -86,7 +87,7 @@
                 setView("dashboard");
             };
 
-            const sectorHeat = useMemo(() => {
+            const sectorSummary = useMemo(() => {
                 const map = enriched.reduce((acc, x) => {
                     if (!acc[x.sector]) acc[x.sector] = { count: 0, highRisk: 0, avgUpside: 0 };
                     acc[x.sector].count++;
@@ -99,93 +100,122 @@
                 })).sort((a, b) => b.highRisk - a.highRisk);
             }, [enriched]);
 
-            const exportMaster = () => {
-                const head = "ISIN,Name,Region,Sector,Upside,QuantRank,RiskLevel\n";
-                const body = enriched.map(s => `${s.id_isin},${s.name},${s.region},${s.sector},${s.upside},${s.qRank},${s.risk}`).join("\n");
-                const blob = new Blob([head + body], { type: 'text/csv' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = 'Mirabaud_Master_Research.csv'; a.click();
-            };
+            const drillDownStocks = useMemo(() => {
+                return enriched.filter(s => s.sector === activeSector);
+            }, [enriched, activeSector]);
 
             return (
                 <div className="flex flex-col h-screen overflow-hidden">
-                    <header className="bg-[#0f172a] text-white p-6 flex justify-between items-center shadow-2xl shrink-0">
-                        <h1 className="font-black italic text-2xl tracking-tighter">MIRABAUD <span className="font-thin opacity-50 uppercase text-lg">HC Hub</span></h1>
+                    <header className="bg-[#0f172a] text-white p-6 flex justify-between items-center shrink-0 shadow-2xl z-20">
+                        <h1 className="font-black italic text-xl tracking-tighter uppercase">MIRABAUD <span className="font-thin opacity-50">HC LAB</span></h1>
                         {enriched.length > 0 && (
-                            <div className="flex items-center gap-10">
-                                <input type="text" placeholder="Filter ISIN/Name..." className="bg-white/10 border border-white/20 rounded-xl px-4 py-2 text-xs w-64 focus:bg-white/20 outline-none" onChange={e => setSearch(e.target.value)} />
-                                <nav className="flex gap-8 text-[10px] font-black uppercase tracking-widest">
-                                    <button onClick={() => setView("dashboard")} className={view==="dashboard"?"text-orange-400":""}>Dashboard</button>
-                                    <button onClick={() => setView("table")} className={view==="table"?"text-orange-400":""}>Universe</button>
-                                    <button onClick={exportMaster} className="bg-orange-600 px-4 py-2 rounded-lg hover:bg-white hover:text-orange-600 transition shadow-xl">Export CSV</button>
-                                </nav>
-                            </div>
+                            <nav className="flex items-center gap-10 text-[10px] font-black uppercase tracking-widest">
+                                <button onClick={() => setView("dashboard")} className={view==="dashboard"?"text-orange-400":""}>Market Dashboard</button>
+                                <button onClick={() => setView("table")} className={view==="table"?"text-orange-400":""}>Universe Table</button>
+                            </nav>
                         )}
                     </header>
 
-                    <main className="flex-1 overflow-auto p-12 bg-slate-100">
+                    <main className="flex-1 overflow-auto p-12 bg-slate-50">
                         {view === "upload" ? (
-                            <div className="max-w-md mx-auto space-y-4 pt-20 animate-in fade-in zoom-in">
-                                <h2 className="text-center font-black text-slate-400 uppercase tracking-widest text-xs mb-10">Data Connector</h2>
+                            <div className="max-w-md mx-auto space-y-4 pt-10 animate-in fade-in">
                                 {['hc', 'quant', 'qual'].map(k => (
-                                    <div key={k} className="relative p-6 bg-white border-2 border-dashed border-slate-200 rounded-[32px] hover:border-blue-500 transition-all">
-                                        <p className="text-[10px] font-black uppercase text-slate-400 mb-1">{k.toUpperCase()} SOURCE</p>
-                                        <p className="text-xs font-bold text-slate-600">{raw[k] ? "✓ File Ready" : "Select CSV..."}</p>
+                                    <div key={k} className="p-8 bg-white border-2 border-dashed rounded-[32px] relative text-center hover:border-blue-500 transition-all">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{k.toUpperCase()} DATA</p>
+                                        <p className="text-sm font-bold text-slate-700">{raw[k] ? "✓ Loaded" : "Upload CSV"}</p>
                                         <input type="file" onChange={e => handleFile(k, e)} className="absolute inset-0 opacity-0 cursor-pointer" />
                                     </div>
                                 ))}
                                 {raw.hc && raw.quant && raw.qual && (
-                                    <button onClick={runFusion} className="w-full bg-[#0f172a] text-white py-6 rounded-[32px] font-black hover:bg-orange-600 transition-all shadow-2xl text-xs tracking-widest">INITIATE ENGINE</button>
+                                    <button onClick={runFusion} className="w-full bg-[#0f172a] text-white py-6 rounded-[32px] font-black text-xs tracking-[0.2em] shadow-2xl">LAUNCH TERMINAL</button>
                                 )}
                             </div>
                         ) : view === "dashboard" ? (
-                            <div className="max-w-6xl mx-auto space-y-12 animate-in fade-in duration-500">
-                                <div className="grid grid-cols-3 gap-8">
-                                    {Object.entries(enriched.reduce((acc, x) => { acc[x.region] = (acc[x.region] || 0) + 1; return acc; }, { "North America": 0, "Europe": 0, "Emerging Markets": 0 })).map(([r, c]) => (
-                                        <div key={r} className="bg-white p-12 rounded-[48px] shadow-sm border border-slate-100 text-center">
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4">{r}</p>
-                                            <p className="text-7xl font-black text-[#0f172a]">{c}</p>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                {/* SECTOR RISK HEATMAP */}
-                                <div className="bg-white p-10 rounded-[48px] shadow-sm border border-slate-100">
-                                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-8">Sector Risk Concentration</h3>
-                                    <div className="grid grid-cols-2 gap-10">
-                                        {sectorHeat.map(s => (
-                                            <div key={s.name} className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                                                <div>
-                                                    <p className="text-xs font-black text-[#0f172a] uppercase">{s.name}</p>
-                                                    <p className="text-[10px] font-bold text-slate-400">{s.count} Holdings • {s.avgUpside}% Avg. Upside</p>
+                            <div className="max-w-7xl mx-auto space-y-12">
+                                {/* SECTOR HEATMAP GRID */}
+                                <section>
+                                    <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.4em] mb-8 text-center">Sector Risk Concentration • Click to Drill Down</h2>
+                                    <div className="grid grid-cols-4 gap-6">
+                                        {sectorSummary.map(s => (
+                                            <div 
+                                                key={s.name} 
+                                                onClick={() => setActiveSector(s.name)}
+                                                className={`cursor-pointer p-8 rounded-[40px] border transition-all transform hover:scale-105 ${activeSector === s.name ? 'bg-[#0f172a] text-white border-transparent shadow-2xl' : 'bg-white text-slate-900 border-slate-100 shadow-sm'}`}
+                                            >
+                                                <p className={`text-[9px] font-black uppercase tracking-widest mb-2 ${activeSector === s.name ? 'text-orange-400' : 'text-slate-400'}`}>{s.name}</p>
+                                                <div className="flex justify-between items-baseline mb-4">
+                                                    <span className="text-4xl font-black">{s.count}</span>
+                                                    <span className="text-[10px] font-bold opacity-60 uppercase">{s.avgUpside}% Upside</span>
                                                 </div>
-                                                <div className="flex flex-col items-end">
-                                                    <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase ${s.highRisk > 0 ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                                                        {s.highRisk} High Risk
-                                                    </span>
-                                                    <div className="w-32 h-1.5 bg-slate-200 rounded-full mt-3 overflow-hidden">
-                                                        <div className="h-full bg-red-500 transition-all" style={{ width: `${(s.highRisk/s.count)*100}%` }}></div>
-                                                    </div>
+                                                <div className="w-full h-1 bg-slate-200/20 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-red-500" style={{ width: `${(s.highRisk/s.count)*100}%` }}></div>
                                                 </div>
+                                                <p className="text-[9px] font-black uppercase mt-3 opacity-60">{s.highRisk} Risk Warnings</p>
                                             </div>
                                         ))}
                                     </div>
-                                </div>
+                                </section>
+
+                                {/* DRILL DOWN TABLE */}
+                                {activeSector && (
+                                    <section className="bg-white rounded-[48px] shadow-2xl border border-slate-100 overflow-hidden animate-in slide-in-from-bottom-10 duration-500">
+                                        <div className="p-8 border-b flex justify-between items-center bg-slate-50/50">
+                                            <h3 className="font-black text-[#0f172a] uppercase tracking-tighter text-2xl">Underlying: {activeSector}</h3>
+                                            <button onClick={() => setActiveSector(null)} className="text-[10px] font-black text-slate-400 hover:text-red-500 uppercase tracking-widest">✕ Close Drill-down</button>
+                                        </div>
+                                        <table className="w-full text-left text-xs">
+                                            <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">
+                                                <tr>
+                                                    <th className="p-6">Security</th>
+                                                    <th className="p-6 text-center">Quant Q</th>
+                                                    <th className="p-6 text-center">Consensus Target</th>
+                                                    <th className="p-6 text-center">Upside %</th>
+                                                    <th className="p-6">Risk Audit</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {drillDownStocks.map((s, i) => (
+                                                    <tr key={i} onClick={() => setSelected(s)} className="hover:bg-blue-50/50 cursor-pointer transition-colors group">
+                                                        <td className="p-6">
+                                                            <div className="font-black text-[#0f172a] uppercase group-hover:text-blue-600 transition-colors">{s.name}</div>
+                                                            <div className="text-[9px] font-mono text-slate-400 mt-1 uppercase tracking-widest">{s.id_isin}</div>
+                                                        </td>
+                                                        <td className="p-6 text-center">
+                                                            <span className={`px-4 py-1.5 rounded-xl font-black font-mono text-sm ${s.qRank === 1 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>Q{s.qRank || "—"}</span>
+                                                        </td>
+                                                        <td className="p-6 text-center font-bold text-slate-600">{s.target || "N/A"}</td>
+                                                        <td className={`p-6 text-center font-black ${s.upside > 0.15 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                            {s.upside ? `${(s.upside * 100).toFixed(1)}%` : "—"}
+                                                        </td>
+                                                        <td className="p-6">
+                                                            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[9px] font-black uppercase ${s.risk==='high'?'bg-red-500 text-white shadow-lg shadow-red-200':'bg-emerald-500 text-white shadow-lg shadow-emerald-200'}`}>
+                                                                {s.risk==='high'?'Review':'Clean'}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </section>
+                                )}
                             </div>
                         ) : (
-                            <div className="bg-white rounded-[40px] shadow-2xl border overflow-hidden">
+                            /* FULL UNIVERSE VIEW (RETAINED FROM PREVIOUS) */
+                            <div className="max-w-7xl mx-auto bg-white rounded-[40px] shadow-2xl overflow-hidden animate-in fade-in">
+                                <div className="p-8 border-b bg-slate-50/50 flex justify-between items-center">
+                                    <h3 className="font-black text-[#0f172a] uppercase tracking-tighter text-2xl">Full Research Universe</h3>
+                                    <input type="text" placeholder="Search ISIN/Name..." className="bg-white border rounded-full px-6 py-2 text-xs w-80 shadow-sm" onChange={e => setSearch(e.target.value)} />
+                                </div>
                                 <table className="w-full text-left text-xs">
-                                    <thead className="bg-slate-50 border-b font-black text-slate-400 text-[10px] tracking-widest uppercase">
-                                        <tr><th className="p-6">Security</th><th className="p-6">Region</th><th className="p-6 text-center">Upside</th><th className="p-6 text-center">Quant</th><th className="p-6">Status</th></tr>
+                                    <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">
+                                        <tr><th className="p-6">Security</th><th className="p-6 text-center">Quant Rank</th><th className="p-6 text-center">Upside</th><th className="p-6">Status</th></tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                         {enriched.filter(x => x.name.toLowerCase().includes(search.toLowerCase())).map((s, i) => (
-                                            <tr key={i} onClick={() => setSelected(s)} className="hover:bg-blue-50/50 cursor-pointer transition-all">
-                                                <td className="p-6 font-black text-slate-800 uppercase">{s.name}<p className="text-[9px] font-mono text-slate-400">{s.id_isin}</p></td>
-                                                <td className="p-6 font-bold text-slate-400 uppercase text-[10px]">{s.region}</td>
-                                                <td className="p-6 text-center font-black text-slate-500">{s.upside ? `${(s.upside*100).toFixed(1)}%` : "—"}</td>
-                                                <td className="p-6 text-center font-black font-mono text-blue-600">Q{s.qRank || "—"}</td>
+                                            <tr key={i} onClick={() => setSelected(s)} className="hover:bg-slate-50 cursor-pointer">
+                                                <td className="p-6 font-black text-slate-800 uppercase">{s.name}</td>
+                                                <td className="p-6 text-center font-black text-blue-600 font-mono">Q{s.qRank}</td>
+                                                <td className="p-6 text-center font-black">{s.upside ? `${(s.upside*100).toFixed(1)}%` : "—"}</td>
                                                 <td className="p-6"><span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${s.risk==='high'?'bg-red-600 text-white':'bg-emerald-500 text-white'}`}>{s.risk==='high'?'Review':'Intact'}</span></td>
                                             </tr>
                                         ))}
@@ -195,31 +225,32 @@
                         )}
                     </main>
 
+                    {/* DETAIL MODAL (SIDEBAR) */}
                     {selected && (
-                        <div className="fixed inset-0 bg-[#0f172a]/80 backdrop-blur-md z-50 flex justify-end">
+                        <div className="fixed inset-0 bg-[#0f172a]/70 backdrop-blur-md z-50 flex justify-end transition-all">
                             <div className="w-[600px] bg-white h-full p-16 animate-in slide-in-from-right duration-500 overflow-y-auto">
-                                <button onClick={() => setSelected(null)} className="text-[10px] font-black text-slate-300 hover:text-red-500 uppercase mb-12">✕ Close</button>
-                                <h2 className="text-5xl font-black text-[#0f172a] uppercase tracking-tighter leading-none mb-4">{selected.name}</h2>
-                                <p className="text-sm font-bold text-slate-400 tracking-widest uppercase mb-10 border-b pb-4">{selected.id_isin} | {selected.sector}</p>
-                                
-                                <div className="space-y-12">
-                                    <section className="grid grid-cols-2 gap-8">
-                                        <Card label="Upside" val={selected.upside ? `${(selected.upside*100).toFixed(1)}%` : "N/A"} />
-                                        <Card label="Quant Quartile" val={`Q${selected.qRank}`} />
-                                        <Card label="Stop Loss" val={selected.stopLoss || "Neutral"} highlight={selected.stopLoss?.includes('STOP')} />
-                                        <Card label="Qual Rating" val={selected.overall || "Pending"} />
-                                    </section>
-                                    <section className="bg-slate-50 p-10 rounded-[48px] border border-slate-100">
-                                        <h3 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-6">Internal Forensic Analysis</h3>
+                                <button onClick={() => setSelected(null)} className="text-[10px] font-black text-slate-300 hover:text-red-500 uppercase mb-12 tracking-[0.2em]">✕ Close Profile</button>
+                                <div className="mb-14">
+                                    <span className="bg-blue-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase mb-4 inline-block tracking-widest">{selected.region}</span>
+                                    <h2 className="text-5xl font-black text-[#0f172a] uppercase tracking-tighter leading-none mb-3">{selected.name}</h2>
+                                    <p className="text-xs font-bold text-slate-400 tracking-widest uppercase">{selected.id_isin} • {selected.sector}</p>
+                                </div>
+                                <div className="space-y-10">
+                                    <div className="grid grid-cols-2 gap-6 bg-slate-50 p-8 rounded-[40px] border border-slate-100">
+                                        <div className="col-span-2 border-b pb-4 mb-2"><h4 className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Pricing & Rank</h4></div>
+                                        <Metric label="Last Price" val={selected.price} />
+                                        <Metric label="Target Price" val={selected.target} highlight />
+                                        <Metric label="Quant Quartile" val={`Q${selected.qRank}`} />
+                                        <Metric label="Forward P/E" val={selected.pe} />
+                                    </div>
+                                    <div className="p-8 border border-slate-100 rounded-[40px]">
+                                        <h4 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-6">Qualitative Audit</h4>
                                         <div className="space-y-4">
-                                            {selected.flags.map(f => (
-                                                <div key={f} className="flex items-center gap-3 text-red-600 font-black uppercase text-[10px] bg-white p-4 rounded-2xl border border-red-50 shadow-sm">
-                                                    <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse"></div>{f}
-                                                </div>
-                                            ))}
-                                            {selected.flags.length === 0 && <p className="text-xs font-bold text-emerald-600 uppercase italic">Security is compliant with all internal HC benchmarks.</p>}
+                                            <QualLine label="Moat" val={selected.moat} />
+                                            <QualLine label="Management" val={selected.mgmt} />
+                                            <QualLine label="Stop Loss Signal" val={selected.stopLoss} color={selected.stopLoss?.includes('STOP') ? 'text-red-600' : 'text-slate-900'} />
                                         </div>
-                                    </section>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -228,10 +259,17 @@
             );
         }
 
-        const Card = ({ label, val, highlight }) => (
-            <div className={`p-6 rounded-3xl border border-slate-100 ${highlight ? 'bg-red-50 border-red-100' : 'bg-white'}`}>
-                <p className="text-[9px] font-black text-slate-300 uppercase mb-1">{label}</p>
-                <p className={`text-xl font-black ${highlight ? 'text-red-600' : 'text-[#0f172a]'}`}>{val}</p>
+        const Metric = ({ label, val, highlight }) => (
+            <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter mb-1">{label}</p>
+                <p className={`text-xl font-black ${highlight ? 'text-blue-600' : 'text-[#0f172a]'}`}>{val || "—"}</p>
+            </div>
+        );
+
+        const QualLine = ({ label, val, color="text-slate-900" }) => (
+            <div className="flex justify-between items-center border-b border-slate-50 pb-2">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{label}</span>
+                <span className={`text-[11px] font-bold uppercase ${color}`}>{val || "N/A"}</span>
             </div>
         );
 
