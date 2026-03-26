@@ -2,23 +2,31 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Mirabaud | HC Executive Lab</title>
+    <title>Mirabaud | Regional Analyst Lab</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body class="bg-[#f1f5f9] text-slate-900">
+<body class="bg-slate-50 text-slate-900">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useMemo } = React;
+        const { useState, useMemo, useEffect, useRef } = React;
+
+        // -- MAPPING LOGIC --
+        const mapRegion = (raw) => {
+            const r = String(raw || "").toLowerCase();
+            if (r.includes("usa") || r.includes("canada") || r.includes("north america") || r.includes("us")) return "North America";
+            if (r.includes("europe") || r.includes("uk") || r.includes("switzerland") || r.includes("france") || r.includes("germany")) return "Europe";
+            return "Emerging Markets"; // Default for everything else
+        };
 
         function App() {
             const [data, setData] = useState({ stocks: null, quant: null, qual: null });
             const [mergedData, setMergedData] = useState(null);
-            const [view, setView] = useState("dashboard"); // 'dashboard' or 'table'
-            const [activeFilter, setActiveFilter] = useState({ type: null, value: null });
+            const [view, setView] = useState("dashboard");
 
             const handleFile = (key, e) => {
                 const file = e.target.files[0];
@@ -26,13 +34,25 @@
                 const reader = new FileReader();
                 reader.onload = (f) => {
                     const text = f.target.result;
-                    const rows = text.split(/\r?\n/).filter(l => l.trim());
+                    const rows = text.split(/\r?\n/).filter(l => l.trim().length > 2);
                     const sep = rows[0].includes(';') ? ';' : ',';
+                    
+                    // Standardize headers to find "id_isin", "sector", etc.
                     const headers = rows[0].split(sep).map(h => h.trim().toLowerCase());
+                    
                     const json = rows.slice(1).map(row => {
                         const cols = row.split(sep);
                         return headers.reduce((acc, h, i) => {
-                            acc[h] = cols[i]?.trim() || "";
+                            // Map variations to standard keys
+                            let keyName = h;
+                            if (h.includes("isin")) keyName = "id_isin";
+                            if (h.includes("sector") || h.includes("industry")) keyName = "sector";
+                            if (h.includes("region") || h.includes("country")) keyName = "region";
+                            if (h.includes("valuation")) keyName = "valuation_rank";
+                            if (h.includes("momentum")) keyName = "momentum_rank";
+                            if (h.includes("quality")) keyName = "quality_rank";
+
+                            acc[keyName] = cols[i]?.trim() || "";
                             return acc;
                         }, {});
                     });
@@ -43,148 +63,103 @@
 
             const runFusion = () => {
                 const result = data.stocks.map(s => {
-                    const isin = String(s.id_isin || "").trim().toLowerCase();
-                    const qMatch = data.quant.find(q => String(q.id_isin || "").trim().toLowerCase() === isin) || {};
-                    const lMatch = data.qual.find(l => String(l.id_isin || "").trim().toLowerCase() === isin) || {};
-                    return { ...s, ...qMatch, ...lMatch };
+                    const isin = String(s.id_isin || "").toLowerCase();
+                    const qMatch = data.quant.find(q => String(q.id_isin || "").toLowerCase() === isin) || {};
+                    const lMatch = data.qual.find(l => String(l.id_isin || "").toLowerCase() === isin) || {};
+                    
+                    return { 
+                        ...s, 
+                        ...qMatch, 
+                        ...lMatch,
+                        region: mapRegion(s.region) // Apply the forced classification
+                    };
                 });
                 setMergedData(result);
-                setView("dashboard");
             };
 
-            // Aggregation Logic for Dashboard
             const stats = useMemo(() => {
                 if (!mergedData) return null;
-                const getCounts = (key) => mergedData.reduce((acc, curr) => {
-                    const val = curr[key] || "Unknown";
-                    acc[val] = (acc[val] || 0) + 1;
+                const regions = mergedData.reduce((acc, curr) => {
+                    acc[curr.region] = (acc[curr.region] || 0) + 1;
                     return acc;
-                }, {});
+                }, {"North America": 0, "Europe": 0, "Emerging Markets": 0});
 
                 return {
                     total: mergedData.length,
-                    regions: getCounts('region'),
-                    sectors: getCounts('sector'),
-                    q1_val: mergedData.filter(d => d.valuation_rank === "1").length,
-                    q1_mom: mergedData.filter(d => d.momentum_rank === "1").length,
-                    q1_qual: mergedData.filter(d => d.quality_rank === "1").length,
+                    regions,
+                    q1Val: mergedData.filter(d => d.valuation_rank === "1").length,
+                    q1Mom: mergedData.filter(d => d.momentum_rank === "1").length,
                 };
             }, [mergedData]);
 
-            const filteredStocks = useMemo(() => {
-                if (!activeFilter.type) return mergedData;
-                return mergedData.filter(s => s[activeFilter.type] === activeFilter.value);
-            }, [mergedData, activeFilter]);
-
             return (
                 <div className="min-h-screen flex flex-col">
-                    <header className="bg-[#0f2d5e] p-6 text-white flex justify-between items-center shadow-xl shrink-0">
-                        <h1 className="font-black italic text-xl tracking-tighter">MIRABAUD <span className="opacity-50 font-light">HC LAB</span></h1>
-                        {mergedData && (
-                            <button onClick={() => {setView("dashboard"); setActiveFilter({type:null, value:null})}} className="text-xs font-bold uppercase tracking-widest hover:text-orange-400">Main Overview</button>
-                        )}
+                    <header className="bg-[#0f2d5e] p-6 text-white border-b-4 border-orange-500 shadow-xl flex justify-between shrink-0">
+                        <h1 className="font-black italic tracking-tighter uppercase">Mirabaud <span className="font-light opacity-50">Regional Hub</span></h1>
+                        {mergedData && <button onClick={() => setView(view === "dashboard" ? "table" : "dashboard")} className="bg-white/10 px-4 py-1 rounded text-[10px] font-bold uppercase tracking-widest">{view === "dashboard" ? "View Full Table" : "Back to Summary"}</button>}
                     </header>
 
-                    <main className="flex-1 overflow-auto p-8">
+                    <main className="flex-1 p-8 overflow-auto">
                         {!mergedData ? (
-                            <div className="max-w-xl mx-auto space-y-4 pt-20">
-                                <h2 className="text-center font-bold text-slate-400 uppercase text-xs tracking-[0.3em] mb-8">Data Ingestion Engine</h2>
+                            <div className="max-w-md mx-auto space-y-6 pt-20">
                                 {['stocks', 'quant', 'qual'].map(k => (
-                                    <div key={k} className={`p-6 border-2 rounded-2xl transition ${data[k] ? 'bg-white border-green-500 shadow-lg' : 'bg-slate-50 border-dashed border-slate-300'}`}>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-[10px] font-black uppercase text-slate-500">{k} File</span>
-                                            {data[k] && <span className="text-green-500 font-bold text-xs">Ready</span>}
-                                        </div>
-                                        <input type="file" onChange={(e) => handleFile(k, e)} className="mt-2 text-[10px] w-full" />
+                                    <div key={k} className={`p-6 border-2 rounded-2xl ${data[k] ? 'bg-white border-green-500' : 'bg-slate-100 border-dashed border-slate-300'}`}>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">{k} Data Source</p>
+                                        <input type="file" onChange={(e) => handleFile(k, e)} className="text-[10px] w-full" />
                                     </div>
                                 ))}
-                                {data.stocks && data.quant && data.qual && (
-                                    <button onClick={runFusion} className="w-full bg-orange-600 text-white py-4 rounded-2xl font-black shadow-xl hover:scale-[1.02] transition">INITIALIZE DASHBOARD</button>
-                                )}
+                                {data.stocks && data.quant && data.qual && <button onClick={runFusion} className="w-full bg-orange-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-orange-700 transition">GENERATE REGIONAL VIEW</button>}
                             </div>
                         ) : view === "dashboard" ? (
-                            <div className="max-w-6xl mx-auto animate-in fade-in duration-500">
-                                {/* TOP KPIs */}
-                                <div className="grid grid-cols-4 gap-6 mb-8">
-                                    <StatCard label="Total Universe" value={stats.total} color="bg-slate-800" />
-                                    <StatCard label="Valuation Q1" value={stats.q1_val} color="bg-blue-600" />
-                                    <StatCard label="Momentum Q1" value={stats.q1_mom} color="bg-indigo-600" />
-                                    <StatCard label="Quality Q1" value={stats.q1_qual} color="bg-emerald-600" />
+                            <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500">
+                                <div className="grid grid-cols-3 gap-6">
+                                    {Object.entries(stats.regions).map(([name, count]) => (
+                                        <div key={name} className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 text-center">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">{name}</p>
+                                            <p className="text-5xl font-black text-[#0f2d5e]">{count}</p>
+                                            <p className="text-[10px] font-bold text-slate-300 mt-2 italic">Stocks in Universe</p>
+                                        </div>
+                                    ))}
                                 </div>
-
-                                <div className="grid grid-cols-2 gap-8">
-                                    {/* REGION DRILLDOWN */}
-                                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Universe by Region</h3>
-                                        <div className="space-y-2">
-                                            {Object.entries(stats.regions).map(([name, count]) => (
-                                                <button key={name} onClick={() => {setActiveFilter({type:'region', value:name}); setView('table')}} 
-                                                    className="w-full flex justify-between p-3 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-200 transition group">
-                                                    <span className="font-bold text-slate-700">{name}</span>
-                                                    <span className="bg-slate-100 px-2 py-0.5 rounded text-xs font-black group-hover:bg-blue-600 group-hover:text-white">{count}</span>
-                                                </button>
-                                            ))}
-                                        </div>
+                                <div className="grid grid-cols-2 gap-6">
+                                    <div className="bg-blue-600 p-8 rounded-3xl text-white shadow-xl">
+                                        <p className="text-[10px] font-black uppercase opacity-60 mb-1 tracking-widest">Valuation Q1 Leaders</p>
+                                        <p className="text-4xl font-black">{stats.q1Val} <span className="text-sm font-light">Stocks</span></p>
                                     </div>
-
-                                    {/* SECTOR DRILLDOWN */}
-                                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Universe by Sector</h3>
-                                        <div className="space-y-2 overflow-y-auto max-h-[400px]">
-                                            {Object.entries(stats.sectors).map(([name, count]) => (
-                                                <button key={name} onClick={() => {setActiveFilter({type:'sector', value:name}); setView('table')}} 
-                                                    className="w-full flex justify-between p-3 rounded-lg hover:bg-orange-50 border border-transparent hover:border-orange-200 transition group">
-                                                    <span className="font-bold text-slate-700">{name}</span>
-                                                    <span className="bg-slate-100 px-2 py-0.5 rounded text-xs font-black group-hover:bg-orange-600 group-hover:text-white">{count}</span>
-                                                </button>
-                                            ))}
-                                        </div>
+                                    <div className="bg-indigo-600 p-8 rounded-3xl text-white shadow-xl">
+                                        <p className="text-[10px] font-black uppercase opacity-60 mb-1 tracking-widest">Momentum Q1 Leaders</p>
+                                        <p className="text-4xl font-black">{stats.q1Mom} <span className="text-sm font-light">Stocks</span></p>
                                     </div>
                                 </div>
                             </div>
                         ) : (
-                            <div className="max-w-6xl mx-auto animate-in slide-in-from-bottom-4 duration-500">
-                                <div className="flex items-center gap-4 mb-6">
-                                    <button onClick={() => setView('dashboard')} className="p-2 hover:bg-slate-200 rounded-full">←</button>
-                                    <h2 className="font-black text-2xl uppercase tracking-tighter">
-                                        {activeFilter.value} <span className="text-slate-400 font-light text-lg">({filteredStocks.length} Stocks)</span>
-                                    </h2>
-                                </div>
-                                <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
-                                    <table className="w-full text-xs text-left">
-                                        <thead className="bg-slate-50 border-b font-black text-slate-400 uppercase">
-                                            <tr>
-                                                <th className="p-4">Security</th>
-                                                <th className="p-4 text-center">Quant Rank</th>
-                                                <th className="p-4 text-center">Qual Moat</th>
-                                                <th className="p-4 text-right">ISIN</th>
+                            <div className="bg-white rounded-2xl shadow-xl overflow-hidden animate-in slide-in-from-bottom-4 border">
+                                <table className="w-full text-xs text-left">
+                                    <thead className="bg-slate-50 border-b text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                        <tr>
+                                            <th className="p-4">ISIN</th>
+                                            <th className="p-4">Name</th>
+                                            <th className="p-4">Classification</th>
+                                            <th className="p-4 text-center">Quant Rank</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {mergedData.map((s, i) => (
+                                            <tr key={i} className="border-b hover:bg-blue-50 transition">
+                                                <td className="p-4 font-mono font-bold text-blue-800">{s.id_isin}</td>
+                                                <td className="p-4 font-black uppercase">{s.name || s.company}</td>
+                                                <td className="p-4 font-bold text-slate-500">{s.region}</td>
+                                                <td className="p-4 text-center font-black text-blue-600 bg-blue-50/20">{s.valuation_rank || "—"}</td>
                                             </tr>
-                                        </thead>
-                                        <tbody>
-                                            {filteredStocks.map((s, i) => (
-                                                <tr key={i} className="border-b hover:bg-blue-50 transition">
-                                                    <td className="p-4 font-bold text-slate-800">{s.name}</td>
-                                                    <td className="p-4 text-center font-mono font-black text-blue-600">{s.valuation_rank || "—"}</td>
-                                                    <td className="p-4 text-center italic text-orange-600 font-bold">{s.moat_score || "—"}</td>
-                                                    <td className="p-4 text-right font-mono text-slate-400">{s.id_isin}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
                         )}
                     </main>
                 </div>
             );
         }
-
-        const StatCard = ({ label, value, color }) => (
-            <div className={`${color} p-6 rounded-2xl text-white shadow-lg`}>
-                <p className="text-[10px] font-black uppercase opacity-60 mb-1">{label}</p>
-                <p className="text-3xl font-black">{value}</p>
-            </div>
-        );
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
