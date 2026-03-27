@@ -239,7 +239,9 @@ th button.srt.on{color:var(--ink)}
 .fglg{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:3px 9px;background:#f8d7da;color:#842029;margin-right:4px;margin-bottom:4px;border-radius:2px}
 .fglg.w{background:#fef3cd;color:#856404}
 .no-data{font-size:9px;color:var(--muted);font-style:italic;padding:8px 0}
-.empty{text-align:center;padding:70px 20px;color:var(--muted)}
+.ai-gen-btn{font-family:inherit;font-size:9px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;background:var(--ink);color:var(--paper);border:none;padding:7px 14px;cursor:pointer;transition:background .15s;display:inline-flex;align-items:center;gap:6px}
+.ai-gen-btn:hover{background:var(--accent-dark)}
+.ai-gen-btn:disabled{opacity:.5;cursor:not-allowed}
 .eico{font-size:28px;margin-bottom:10px}
 .emsg{font-size:9px;letter-spacing:.12em;text-transform:uppercase}
  
@@ -321,6 +323,17 @@ var filters = { search: '', region: 'All', sector: 'All', tiers: [], quants: [],
 // ── PERSISTENCE ──────────────────────────────────────
 var STORAGE_KEYS = { all: 'mhc_raw_all', universe: 'mhc_raw_universe', quant: 'mhc_raw_quant', qual: 'mhc_raw_qual' };
 var STORAGE_META = 'mhc_raw_meta';
+var STORAGE_APIKEY = 'mhc_apikey';
+ 
+function saveApiKey(key) {
+  try { localStorage.setItem(STORAGE_APIKEY, key); return true; } catch(e) { return false; }
+}
+function loadApiKey() {
+  try { return localStorage.getItem(STORAGE_APIKEY) || ''; } catch(e) { return ''; }
+}
+function clearApiKey() {
+  try { localStorage.removeItem(STORAGE_APIKEY); } catch(e) {}
+}
  
 // Columns we actually use — prune everything else before saving
 var COLS_KEEP = {
@@ -882,11 +895,29 @@ function reset() {
 }
 function clearStorageAndReset() {
   clearStorage();
+  clearApiKey();
   raw = { all: null, universe: null, quant: null, qual: null };
   universe = [];
   filters = { search: '', region: 'All', sector: 'All', tiers: [], quants: [], risk: 'All', divMin: 0 };
   closeDrill();
   showView('upload');
+}
+function saveApiKeyFromInput() {
+  var inp = document.getElementById('apikey-input');
+  if (!inp) return;
+  var key = inp.value.trim();
+  if (!key) return;
+  if (!key.startsWith('sk-ant-')) {
+    inp.style.border = '1px solid var(--red)';
+    inp.placeholder = 'Format invalide — doit commencer par sk-ant-...';
+    return;
+  }
+  saveApiKey(key);
+  renderFiles(); // refresh to show masked key
+}
+function clearApiKeyAndRefresh() {
+  clearApiKey();
+  renderFiles();
 }
  
 // ════════════════════════════════════════════════════
@@ -931,12 +962,34 @@ function renderFiles() {
   }).join('');
  
   var hasAll = raw.all && raw.universe;
+  var savedKey = loadApiKey();
+  var keyMasked = savedKey ? savedKey.slice(0, 8) + '••••••••••••••••••••' + savedKey.slice(-4) : '';
  
   document.getElementById('main').innerHTML =
     '<div style="max-width:640px;margin:40px auto;padding:0 24px">' +
     '<div style="font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--accent-dark);margin-bottom:8px">Mirabaud HC Lab</div>' +
     '<div style="font-size:22px;font-weight:700;margin-bottom:4px;letter-spacing:-.01em">Gestion des fichiers</div>' +
     '<div style="font-size:9px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;margin-bottom:24px">Remplacez un fichier individuellement &mdash; la fusion se relance automatiquement</div>' +
+ 
+    // ── API Key section ──
+    '<div style="border:1px solid var(--border);background:var(--white);padding:18px 20px;margin-bottom:16px">' +
+      '<div style="font-size:8px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Cl&eacute; API Anthropic</div>' +
+      '<div style="font-size:10px;color:var(--muted);margin-bottom:12px;line-height:1.6">' +
+        'Requise pour le bouton <b>&#10024; Generate AI Summary</b> dans les fiches titres.<br>' +
+        'Obtenez votre cl&eacute; sur <b>console.anthropic.com</b> &rarr; API Keys.' +
+      '</div>' +
+      (savedKey
+        ? '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+            '<div style="font-size:10px;font-weight:700;color:var(--green)">&#10003; Cl&eacute; enregistr&eacute;e : <span style="font-family:monospace;color:var(--muted)">' + keyMasked + '</span></div>' +
+            '<button onclick="clearApiKeyAndRefresh()" style="font-family:inherit;font-size:8px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;background:none;border:1px solid var(--muted);padding:3px 10px;cursor:pointer;color:var(--muted)">&#10005; Supprimer</button>' +
+          '</div>'
+        : '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+            '<input id="apikey-input" type="password" placeholder="sk-ant-api03-..." ' +
+              'style="font-family:monospace;font-size:11px;background:var(--cream);border:1px solid var(--border);padding:7px 10px;outline:none;width:300px;flex:1" ' +
+              'onkeydown="if(event.key===\'Enter\')saveApiKeyFromInput()">' +
+            '<button onclick="saveApiKeyFromInput()" style="font-family:inherit;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;background:var(--ink);color:var(--paper);border:none;padding:8px 16px;cursor:pointer">Enregistrer</button>' +
+          '</div>') +
+    '</div>' +
  
     '<div style="background:var(--white);border:1px solid var(--border)">' + rows + '</div>' +
  
@@ -946,7 +999,7 @@ function renderFiles() {
     '</div>' +
  
     '<p style="margin-top:14px;font-size:9px;color:var(--muted);line-height:1.7">' +
-    '<b style="color:var(--ink)">Auto-fusion :</b> dès qu\'un fichier est remplacé et que All Stocks + Universe sont présents, la fusion se relance automatiquement et vous retournez sur la Macro View.' +
+    '<b style="color:var(--ink)">Auto-fusion :</b> d&egrave;s qu\'un fichier est remplac&eacute; et que All Stocks + Universe sont pr&eacute;sents, la fusion se relance automatiquement.' +
     '</p></div>';
 }
  
@@ -1819,14 +1872,7 @@ function openStockModal(s) {
  
     // AI Summary button
     '<div id="ai-summary-' + aiId + '" style="margin-bottom:12px">' +
-      '<button onclick="generateSummary(\'' + aiId + '\')" id="ai-btn-' + aiId + '" ' +
-        'style="font-family:inherit;font-size:9px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;' +
-        'background:var(--ink);color:var(--paper);border:none;padding:7px 14px;cursor:pointer;' +
-        'display:flex;align-items:center;gap:7px;transition:background .15s" ' +
-        'onmouseover="this.style.background=\'var(--accent-dark)\'" ' +
-        'onmouseout="this.style.background=\'var(--ink)\'">' +
-        '&#10024; G&eacute;n&eacute;rer un r&eacute;sum&eacute; IA' +
-      '</button>' +
+      '<button class="ai-gen-btn" onclick="generateSummary(\'' + aiId + '\')" id="ai-btn-' + aiId + '">&#10024; Generate AI Summary</button>' +
       '<div id="ai-result-' + aiId + '" style="display:none"></div>' +
     '</div>' +
     '<div class="qr"><span class="qk">52W High / Low</span><span class="qv">' + (cN(s.hi52) !== null ? cN(s.hi52).toFixed(2) : '—') + ' / ' + (cN(s.lo52) !== null ? cN(s.lo52).toFixed(2) : '—') + '</span></div>' +
@@ -1893,10 +1939,26 @@ function generateSummary(aiId) {
     btn.disabled = false;
   }, 15000);
  
+  var apiKey = loadApiKey();
+  if (!apiKey) {
+    result.innerHTML =
+      '<div style="margin-top:10px;padding:10px 12px;background:#fef3cd;color:#856404;font-size:10px;line-height:1.5">' +
+      '&#9888; No API key configured. Go to <b>&#128190; Data Files</b> and enter your Anthropic API key to use this feature.</div>';
+    btn.innerHTML = '&#10024; Generate AI Summary';
+    btn.disabled = false;
+    clearTimeout(timer);
+    return;
+  }
+ 
   fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     signal: controller ? controller.signal : undefined,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 200,
@@ -1905,10 +1967,14 @@ function generateSummary(aiId) {
   })
   .then(function(r) {
     clearTimeout(timer);
+    if (r.status === 401 || r.status === 403) {
+      throw new Error('auth_' + r.status);
+    }
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.json();
   })
   .then(function(data) {
+    if (data.error) throw new Error(data.error.message || 'API error');
     var text = data.content && data.content[0] ? data.content[0].text : 'No response.';
     text = text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
     result.innerHTML =
@@ -1922,10 +1988,18 @@ function generateSummary(aiId) {
   })
   .catch(function(err) {
     clearTimeout(timer);
-    if (err.name === 'AbortError') return; // already handled by timer
+    if (err.name === 'AbortError') return;
+    var msg;
+    if (err.message && err.message.indexOf('auth_') === 0) {
+      msg = 'Authentication error — the Anthropic API key is missing or invalid. This feature requires the Claude.ai interface or a configured API key.';
+    } else if (err.message && err.message.indexOf('Failed to fetch') > -1) {
+      msg = 'Network error — CORS blocked. This works on GitHub Pages or via a local server (python3 -m http.server 8080).';
+    } else {
+      msg = err.message || 'Unknown error';
+    }
     result.innerHTML =
-      '<div style="margin-top:10px;padding:10px 12px;background:#f8d7da;color:#842029;font-size:10px">' +
-      '&#9888; ' + esc(err.message) + ' — API requires GitHub Pages or a server context.</div>';
+      '<div style="margin-top:10px;padding:10px 12px;background:#f8d7da;color:#842029;font-size:10px;line-height:1.5">' +
+      '&#9888; ' + esc(msg) + '</div>';
     btn.innerHTML = '&#10024; Retry';
     btn.disabled = false;
   });
