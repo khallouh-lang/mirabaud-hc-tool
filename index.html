@@ -1728,6 +1728,11 @@ function setSort(f) { sortState = sortState.field === f ? { field: f, dir: sortS
 function openStockModal(s) {
   if (!s) return;
  
+  // Unique ID for this modal's AI summary elements + store stock ref
+  var aiId = 'stock_' + (s.id_isin || '').replace(/[^a-zA-Z0-9]/g, '_');
+  window._aiStocks = window._aiStocks || {};
+  window._aiStocks[aiId] = s;
+ 
   var qSubFields = [
     { k: 'qValue', l: 'Value Creation' }, { k: 'qEarnings', l: 'Earnings Rev.' },
     { k: 'qQuality', l: 'Quality' }, { k: 'qProfitab', l: 'Profitability' },
@@ -1811,6 +1816,19 @@ function openStockModal(s) {
     '<div class="mmet"><div class="mml">Growth YoY</div><div class="mmv">' + (cN(s.expGr) ? parseFloat(s.expGr).toFixed(2) + '%' : '—') + '</div></div>' +
     '<div class="mmet"><div class="mml">Dividend Yield</div><div class="mmv">' + (cN(s.divYield) ? parseFloat(s.divYield).toFixed(2) + '%' : '—') + '</div></div>' +
     '</div>' +
+ 
+    // AI Summary button
+    '<div id="ai-summary-' + aiId + '" style="margin-bottom:12px">' +
+      '<button onclick="generateSummary(\'' + aiId + '\')" id="ai-btn-' + aiId + '" ' +
+        'style="font-family:inherit;font-size:9px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;' +
+        'background:var(--ink);color:var(--paper);border:none;padding:7px 14px;cursor:pointer;' +
+        'display:flex;align-items:center;gap:7px;transition:background .15s" ' +
+        'onmouseover="this.style.background=\'var(--accent-dark)\'" ' +
+        'onmouseout="this.style.background=\'var(--ink)\'">' +
+        '&#10024; G&eacute;n&eacute;rer un r&eacute;sum&eacute; IA' +
+      '</button>' +
+      '<div id="ai-result-' + aiId + '" style="display:none"></div>' +
+    '</div>' +
     '<div class="qr"><span class="qk">52W High / Low</span><span class="qv">' + (cN(s.hi52) !== null ? cN(s.hi52).toFixed(2) : '—') + ' / ' + (cN(s.lo52) !== null ? cN(s.lo52).toFixed(2) : '—') + '</span></div>' +
     '<div class="qr"><span class="qk">YTD Return</span><span class="qv" style="color:' + (ytdN > 0 ? 'var(--green)' : ytdN < 0 ? 'var(--red)' : 'inherit') + '">' + (ytdN !== null ? (ytdN > 0 ? '+' : '') + ytdN.toFixed(2) + '%' : '—') + '</span></div>' +
     '</div>' +
@@ -1840,6 +1858,79 @@ function openStockModal(s) {
     '</div></div>';
   document.body.appendChild(el);
 }
+function generateSummary(aiId) {
+  var s = (window._aiStocks || {})[aiId];
+  if (!s) return;
+  var btn = document.getElementById('ai-btn-' + aiId);
+  var result = document.getElementById('ai-result-' + aiId);
+  if (!btn || !result) return;
+ 
+  btn.disabled = true;
+  btn.innerHTML = '<span>&#9679; Generating...</span>';
+  result.style.display = 'block';
+  result.innerHTML =
+    '<div style="margin-top:10px;padding:12px 14px;background:var(--cream);border-left:3px solid var(--accent);font-size:11px;color:var(--muted);line-height:1.6" id="ai-text-' + aiId + '">' +
+    '<span style="opacity:.5">Analysing data...</span></div>';
+ 
+  // Compact prompt — all key data in ~200 tokens
+  var q = s.hasQuant ? 'Q' + s.qCombined + ' combined | Sentiment Q' + s.qSentiment + ' Earnings Q' + s.qEarnings + (s.stopLoss ? ' | ' + s.stopLoss : '') : 'no quant data';
+  var ql = s.qualAvg !== null ? 'Qual avg ' + s.qualAvg.toFixed(1) + '/4 (moat ' + (s.qualScores.moat||'?') + ' mgmt ' + (s.qualScores.mgmt||'?') + ')' : 'no qual data';
+  var prompt =
+    'Mirabaud equity analyst. 3 short bullets on ' + s.name + ' (' + s.sector + ', ' + s.region + ', tier=' + (s.tier||'N/A') + '):\n' +
+    'Price ' + (s.lastPx||'?') + ' | Target ' + (s.target||'?') + ' | Upside ' + (s.upside !== null ? (s.upside*100).toFixed(1)+'%' : '?') +
+    ' | Fwd PE ' + (s.fwdPE||'?') + ' | Div ' + (s.divYield||'?') + ' | YTD ' + (s.ytdRet||'?') + '\n' +
+    'Quant: ' + q + '\n' +
+    'Qual: ' + ql + '\n' +
+    'Flags: ' + (s.flags.length ? s.flags.join(', ') : 'none') + '\n\n' +
+    'Format: 3 bullets (• Investment case  • Valuation & signals  • Key risk). Max 80 words total. No intro, no conclusion.';
+ 
+  // Timeout controller
+  var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  var timer = setTimeout(function() {
+    if (controller) controller.abort();
+    result.innerHTML = '<div style="margin-top:10px;padding:10px 12px;background:#f8d7da;color:#842029;font-size:10px">&#9888; Timeout — v&eacute;rifiez que le fichier tourne sur GitHub Pages (l\'API Anthropic bloque les requ&ecirc;tes depuis un fichier local).</div>';
+    btn.innerHTML = '&#10024; R&eacute;essayer';
+    btn.disabled = false;
+  }, 15000);
+ 
+  fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    signal: controller ? controller.signal : undefined,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 200,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  })
+  .then(function(r) {
+    clearTimeout(timer);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  })
+  .then(function(data) {
+    var text = data.content && data.content[0] ? data.content[0].text : 'No response.';
+    text = text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+    result.innerHTML =
+      '<div style="margin-top:10px;padding:12px 14px;background:var(--cream);border-left:3px solid var(--accent);font-size:11px;line-height:1.7;color:var(--ink)">' +
+      '<div style="font-size:8px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-dark);margin-bottom:6px">&#10024; AI Summary</div>' +
+      text +
+      '<div style="margin-top:6px;font-size:8px;color:var(--muted)">Based on Bloomberg data &amp; internal scores only.</div>' +
+      '</div>';
+    btn.innerHTML = '&#10227; Refresh';
+    btn.disabled = false;
+  })
+  .catch(function(err) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') return; // already handled by timer
+    result.innerHTML =
+      '<div style="margin-top:10px;padding:10px 12px;background:#f8d7da;color:#842029;font-size:10px">' +
+      '&#9888; ' + esc(err.message) + ' — API requires GitHub Pages or a server context.</div>';
+    btn.innerHTML = '&#10024; Retry';
+    btn.disabled = false;
+  });
+}
+ 
 function closeModal() { var m = document.getElementById('modal'); if (m) m.remove(); }
  
 // ── INIT — auto-load from localStorage ──────────────
