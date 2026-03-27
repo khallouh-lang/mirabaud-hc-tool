@@ -323,16 +323,16 @@ var filters = { search: '', region: 'All', sector: 'All', tiers: [], quants: [],
 // ── PERSISTENCE ──────────────────────────────────────
 var STORAGE_KEYS = { all: 'mhc_raw_all', universe: 'mhc_raw_universe', quant: 'mhc_raw_quant', qual: 'mhc_raw_qual' };
 var STORAGE_META = 'mhc_raw_meta';
-var STORAGE_APIKEY = 'mhc_apikey';
+var STORAGE_PROXY = 'mhc_proxy_url';
  
 function saveApiKey(key) {
-  try { localStorage.setItem(STORAGE_APIKEY, key); return true; } catch(e) { return false; }
+  try { localStorage.setItem(STORAGE_PROXY, key); return true; } catch(e) { return false; }
 }
 function loadApiKey() {
-  try { return localStorage.getItem(STORAGE_APIKEY) || ''; } catch(e) { return ''; }
+  try { return localStorage.getItem(STORAGE_PROXY) || ''; } catch(e) { return ''; }
 }
 function clearApiKey() {
-  try { localStorage.removeItem(STORAGE_APIKEY); } catch(e) {}
+  try { localStorage.removeItem(STORAGE_PROXY); } catch(e) {}
 }
  
 // Columns we actually use — prune everything else before saving
@@ -907,13 +907,13 @@ function saveApiKeyFromInput() {
   if (!inp) return;
   var key = inp.value.trim();
   if (!key) return;
-  if (!key.startsWith('sk-ant-')) {
+  if (!key.startsWith('https://')) {
     inp.style.border = '1px solid var(--red)';
-    inp.placeholder = 'Format invalide — doit commencer par sk-ant-...';
+    inp.placeholder = 'Format invalide — doit commencer par https://';
     return;
   }
   saveApiKey(key);
-  renderFiles(); // refresh to show masked key
+  renderFiles();
 }
 function clearApiKeyAndRefresh() {
   clearApiKey();
@@ -963,7 +963,7 @@ function renderFiles() {
  
   var hasAll = raw.all && raw.universe;
   var savedKey = loadApiKey();
-  var keyMasked = savedKey ? savedKey.slice(0, 8) + '••••••••••••••••••••' + savedKey.slice(-4) : '';
+  var keyDisplay = savedKey ? savedKey.slice(0, 30) + '...' : '';
  
   document.getElementById('main').innerHTML =
     '<div style="max-width:640px;margin:40px auto;padding:0 24px">' +
@@ -971,21 +971,22 @@ function renderFiles() {
     '<div style="font-size:22px;font-weight:700;margin-bottom:4px;letter-spacing:-.01em">Gestion des fichiers</div>' +
     '<div style="font-size:9px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;margin-bottom:24px">Remplacez un fichier individuellement &mdash; la fusion se relance automatiquement</div>' +
  
-    // ── API Key section ──
+    // ── Proxy URL section ──
     '<div style="border:1px solid var(--border);background:var(--white);padding:18px 20px;margin-bottom:16px">' +
-      '<div style="font-size:8px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Cl&eacute; API Anthropic</div>' +
-      '<div style="font-size:10px;color:var(--muted);margin-bottom:12px;line-height:1.6">' +
-        'Requise pour le bouton <b>&#10024; Generate AI Summary</b> dans les fiches titres.<br>' +
-        'Obtenez votre cl&eacute; sur <b>console.anthropic.com</b> &rarr; API Keys.' +
+      '<div style="font-size:8px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">&#10024; AI Summary — Configuration</div>' +
+      '<div style="font-size:10px;color:var(--muted);margin-bottom:12px;line-height:1.7">' +
+        'Pour activer le r&eacute;sum&eacute; IA, d&eacute;ployez le <b>Cloudflare Worker</b> inclus dans votre t&eacute;l&eacute;chargement (<code>cloudflare-worker.js</code>) ' +
+        'et collez l\'URL de votre worker ci-dessous.<br>' +
+        '<span style="color:var(--accent-dark)">workers.cloudflare.com</span> &rarr; Create Worker &rarr; coller le code &rarr; Deploy &rarr; copier l\'URL.' +
       '</div>' +
       (savedKey
         ? '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
-            '<div style="font-size:10px;font-weight:700;color:var(--green)">&#10003; Cl&eacute; enregistr&eacute;e : <span style="font-family:monospace;color:var(--muted)">' + keyMasked + '</span></div>' +
+            '<div style="font-size:10px;font-weight:700;color:var(--green)">&#10003; Proxy configur&eacute; : <span style="font-family:monospace;font-size:9px;color:var(--muted)">' + esc(keyDisplay) + '</span></div>' +
             '<button onclick="clearApiKeyAndRefresh()" style="font-family:inherit;font-size:8px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;background:none;border:1px solid var(--muted);padding:3px 10px;cursor:pointer;color:var(--muted)">&#10005; Supprimer</button>' +
           '</div>'
         : '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
-            '<input id="apikey-input" type="password" placeholder="sk-ant-api03-..." ' +
-              'style="font-family:monospace;font-size:11px;background:var(--cream);border:1px solid var(--border);padding:7px 10px;outline:none;width:300px;flex:1" ' +
+            '<input id="apikey-input" type="text" placeholder="https://mirabaud-proxy.YOUR-NAME.workers.dev" ' +
+              'style="font-family:monospace;font-size:10px;background:var(--cream);border:1px solid var(--border);padding:7px 10px;outline:none;width:340px;flex:1" ' +
               'onkeydown="if(event.key===\'Enter\')saveApiKeyFromInput()">' +
             '<button onclick="saveApiKeyFromInput()" style="font-family:inherit;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;background:var(--ink);color:var(--paper);border:none;padding:8px 16px;cursor:pointer">Enregistrer</button>' +
           '</div>') +
@@ -1930,35 +1931,29 @@ function generateSummary(aiId) {
     'Flags: ' + (s.flags.length ? s.flags.join(', ') : 'none') + '\n\n' +
     'Format: 3 bullets (• Investment case  • Valuation & signals  • Key risk). Max 80 words total. No intro, no conclusion.';
  
-  // Timeout controller
-  var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  // Timeout via flag (AbortController causes postMessage issues in some browsers)
+  var timedOut = false;
   var timer = setTimeout(function() {
-    if (controller) controller.abort();
-    result.innerHTML = '<div style="margin-top:10px;padding:10px 12px;background:#f8d7da;color:#842029;font-size:10px">&#9888; Timeout — v&eacute;rifiez que le fichier tourne sur GitHub Pages (l\'API Anthropic bloque les requ&ecirc;tes depuis un fichier local).</div>';
-    btn.innerHTML = '&#10024; R&eacute;essayer';
+    timedOut = true;
+    result.innerHTML = '<div style="margin-top:10px;padding:10px 12px;background:#f8d7da;color:#842029;font-size:10px">&#9888; Timeout — please retry.</div>';
+    btn.innerHTML = '&#10024; Retry';
     btn.disabled = false;
-  }, 15000);
+  }, 20000);
  
-  var apiKey = loadApiKey();
-  if (!apiKey) {
+  var proxyUrl = loadApiKey();
+  if (!proxyUrl) {
     result.innerHTML =
       '<div style="margin-top:10px;padding:10px 12px;background:#fef3cd;color:#856404;font-size:10px;line-height:1.5">' +
-      '&#9888; No API key configured. Go to <b>&#128190; Data Files</b> and enter your Anthropic API key to use this feature.</div>';
+      '&#9888; No proxy configured. Go to <b>&#128190; Data Files</b> and enter your Cloudflare Worker URL.</div>';
     btn.innerHTML = '&#10024; Generate AI Summary';
     btn.disabled = false;
     clearTimeout(timer);
     return;
   }
  
-  fetch('https://api.anthropic.com/v1/messages', {
+  fetch(proxyUrl, {
     method: 'POST',
-    signal: controller ? controller.signal : undefined,
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 200,
@@ -1967,13 +1962,13 @@ function generateSummary(aiId) {
   })
   .then(function(r) {
     clearTimeout(timer);
-    if (r.status === 401 || r.status === 403) {
-      throw new Error('auth_' + r.status);
-    }
+    if (timedOut) return;
+    if (r.status === 401 || r.status === 403) throw new Error('auth_' + r.status);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.json();
   })
   .then(function(data) {
+    if (!data || timedOut) return;
     if (data.error) throw new Error(data.error.message || 'API error');
     var text = data.content && data.content[0] ? data.content[0].text : 'No response.';
     text = text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
@@ -1988,12 +1983,12 @@ function generateSummary(aiId) {
   })
   .catch(function(err) {
     clearTimeout(timer);
-    if (err.name === 'AbortError') return;
+    if (timedOut) return;
     var msg;
     if (err.message && err.message.indexOf('auth_') === 0) {
-      msg = 'Authentication error — the Anthropic API key is missing or invalid. This feature requires the Claude.ai interface or a configured API key.';
+      msg = 'Invalid API key — please check your key in Data Files.';
     } else if (err.message && err.message.indexOf('Failed to fetch') > -1) {
-      msg = 'Network error — CORS blocked. This works on GitHub Pages or via a local server (python3 -m http.server 8080).';
+      msg = 'Network error — make sure you are on GitHub Pages (not a local file).';
     } else {
       msg = err.message || 'Unknown error';
     }
